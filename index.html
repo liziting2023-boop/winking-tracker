@@ -271,7 +271,7 @@ let secsLeft = INTERVAL, cTimer = null, rTimer = null, chart = null;
 let curRange = '1mo', curInt = '1d';
 
 // ── Network ──────────────────────────────────────────────
-const px = u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`;
+const px = u => `https://corsproxy.io/?url=${encodeURIComponent(u)}`;
 const yUrl = (sym, range='5d', interval='1d') =>
   px(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=${interval}&range=${range}`);
 const ySum = sym =>
