@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Winking Studios 市值监控</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-adapter-date-fns/3.0.0/chartjs-adapter-date-fns.bundle.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;600&family=Inter:wght@300;400;500;600&display=swap');
+:root {
+  --bg:#0a0d12; --surface:#111520; --surface2:#161c2d;
+  --border:#1e2535; --border2:#252f45;
+  --sgx:#00d4a8; --lse:#7c6af7; --cmp:#f0a500;
+  --text:#e8edf5; --muted:#6b7a99; --dim:#3a4460;
+  --up:#00c985; --dn:#ff4d6d;
+  --mono:'IBM Plex Mono',monospace; --sans:'Inter',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100vh;padding:28px 20px}
+
+/* ── Header ── */
+header{max-width:1000px;margin:0 auto 28px;display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:12px;padding-bottom:18px;border-bottom:1px solid var(--border)}
+.brand-eye{font-family:var(--mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+.brand-title{font-size:21px;font-weight:600;letter-spacing:-.02em}
+.hdr-right{display:flex;align-items:center;gap:14px}
+.refresh-meta{font-family:var(--mono);font-size:11px;color:var(--muted);text-align:right;line-height:1.7}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--sgx);animation:blink 2s infinite;flex-shrink:0}
+.dot.busy{background:var(--cmp);animation:none}
+@keyframes blink{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.75)}}
+
+/* ── Layout ── */
+.wrap{max-width:1000px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+
+/* ── Cards ── */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:22px 24px;position:relative;overflow:hidden}
+.card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px}
+.card.sgx::before{background:var(--sgx)}
+.card.lse::before{background:var(--lse)}
+.card.cmp::before{background:var(--cmp)}
+.card.chart::before{background:linear-gradient(90deg,var(--sgx),var(--lse))}
+
+/* ── Quote grid (top 2 cards) ── */
+.quote-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+
+/* ── Card header ── */
+.exch{font-family:var(--mono);font-size:10px;letter-spacing:.15em;text-transform:uppercase;margin-bottom:3px}
+.card.sgx .exch{color:var(--sgx)} .card.lse .exch{color:var(--lse)} .card.cmp .exch{color:var(--cmp)} .card.chart .exch{color:var(--muted)}
+.ticker{font-size:12px;color:var(--muted);margin-bottom:16px}
+
+/* ── Price hero ── */
+.price-hero{display:flex;align-items:baseline;gap:14px;margin-bottom:14px;flex-wrap:wrap}
+.price-big{font-family:var(--mono);font-size:30px;font-weight:300;letter-spacing:-.02em}
+.price-chg{font-family:var(--mono);font-size:13px}
+.up{color:var(--up)} .dn{color:var(--dn)} .neu{color:var(--muted)}
+
+/* ── Divider ── */
+hr.d{border:none;border-top:1px solid var(--border);margin:14px 0}
+
+/* ── Stats grid (inside quote cards) ── */
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:6px 16px}
+.stat{display:flex;flex-direction:column;gap:3px;padding:8px 0;border-bottom:1px solid var(--border)}
+.stat:nth-last-child(-n+2){border-bottom:none}
+.s-label{font-size:11px;color:var(--muted)}
+.s-val{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--text)}
+.s-val.hi{color:var(--up)} .s-val.lo{color:var(--dn)}
+
+/* ── Compare card ── */
+.cmp-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+.cmp-col{}
+.cmp-lbl{font-size:11px;color:var(--muted);font-family:var(--mono);letter-spacing:.06em;margin-bottom:7px}
+.cmp-val{font-family:var(--mono);font-size:22px;font-weight:300;margin-bottom:3px}
+.cmp-sub{font-size:11px;color:var(--dim)}
+.badge{display:inline-block;padding:3px 10px;border-radius:20px;font-family:var(--mono);font-size:12px;font-weight:600;margin-top:5px}
+.badge.pos{background:rgba(0,201,133,.12);color:var(--up)}
+.badge.neg{background:rgba(255,77,109,.12);color:var(--dn)}
+.badge.neu2{background:rgba(107,122,153,.12);color:var(--muted)}
+
+/* ── Chart card ── */
+.chart-hdr{display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px}
+.chart-legend{display:flex;gap:16px;margin-top:5px}
+.leg{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);font-family:var(--mono)}
+.leg-dot{width:8px;height:8px;border-radius:50%}
+.tabs{display:flex;gap:3px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:3px}
+.tab{font-family:var(--mono);font-size:11px;padding:5px 11px;border-radius:5px;border:none;background:transparent;color:var(--muted);cursor:pointer;transition:.15s;letter-spacing:.05em}
+.tab:hover{color:var(--text)}
+.tab.on{background:var(--surface2);color:var(--text);border:1px solid var(--border)}
+.chart-box{position:relative;height:250px}
+.chart-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:12px;color:var(--dim);background:var(--surface);border-radius:6px}
+.chart-foot{font-size:11px;color:var(--dim);font-family:var(--mono);margin-top:9px;text-align:right}
+
+/* ── Volume bar (inside chart card) ── */
+.vol-section{margin-top:16px;border-top:1px solid var(--border);padding-top:14px}
+.vol-label{font-size:11px;color:var(--muted);font-family:var(--mono);letter-spacing:.08em;margin-bottom:8px}
+.vol-compare{display:flex;gap:24px;flex-wrap:wrap}
+.vol-item{display:flex;flex-direction:column;gap:4px}
+.vol-name{font-size:11px;color:var(--muted);font-family:var(--mono)}
+.vol-bar-wrap{width:200px;height:6px;background:var(--border);border-radius:3px;overflow:hidden}
+.vol-bar{height:100%;border-radius:3px;transition:width .5s}
+.vol-bar.sgx-bar{background:var(--sgx)}
+.vol-bar.lse-bar{background:var(--lse)}
+.vol-num{font-family:var(--mono);font-size:12px;color:var(--text)}
+
+/* ── Footer ── */
+.foot{max-width:1000px;margin:10px auto 0;display:flex;align-items:center;justify-content:flex-end;gap:0}
+.foot-time{font-family:var(--mono);font-size:11px;color:var(--dim)}
+.btn{background:transparent;border:1px solid var(--border);color:var(--muted);font-family:var(--mono);font-size:11px;padding:5px 13px;border-radius:6px;cursor:pointer;transition:.2s;margin-left:10px}
+.btn:hover{border-color:var(--sgx);color:var(--sgx)}
+.cbar{max-width:1000px;margin:7px auto 0;height:2px;background:var(--border);border-radius:1px;overflow:hidden}
+.cfill{height:100%;background:linear-gradient(90deg,var(--sgx),var(--lse));transition:width 1s linear}
+
+.err{font-size:11px;color:var(--dn);font-family:var(--mono);margin-top:6px}
+
+@media(max-width:640px){
+  .quote-row{grid-template-columns:1fr}
+  .stats{grid-template-columns:1fr}
+  .stat:nth-last-child(-n+2){border-bottom:1px solid var(--border)}
+  .stat:last-child{border-bottom:none}
+  .cmp-grid{grid-template-columns:1fr;gap:12px}
+  .chart-box{height:200px}
+  .vol-bar-wrap{width:140px}
+  .price-big{font-size:24px}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="brand-eye">Dual-Listing Tracker</div>
+    <div class="brand-title">Winking Studios 市值监控</div>
+  </div>
+  <div class="hdr-right">
+    <div class="refresh-meta">每 5 分钟自动刷新<br><span id="nxt">—</span></div>
+    <div class="dot" id="dot"></div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <!-- Quote cards -->
+  <div class="quote-row">
+
+    <!-- SGX -->
+    <div class="card sgx">
+      <div class="exch">新加坡交易所 SGX</div>
+      <div class="ticker">WKS.SI · 新加坡元 SGD</div>
+      <div class="price-hero">
+        <span class="price-big" id="sgx-price">—</span>
+        <span class="price-chg neu" id="sgx-chg">—</span>
+      </div>
+      <hr class="d">
+      <div class="stats">
+        <div class="stat"><span class="s-label">市值</span><span class="s-val" id="sgx-mcap">—</span></div>
+        <div class="stat"><span class="s-label">换算市值 (USD)</span><span class="s-val" id="sgx-mcap-usd">—</span></div>
+        <div class="stat"><span class="s-label">成交量 Volume</span><span class="s-val" id="sgx-vol">—</span></div>
+        <div class="stat"><span class="s-label">均量 Avg Vol (3M)</span><span class="s-val" id="sgx-avgvol">—</span></div>
+        <div class="stat"><span class="s-label">市盈率 P/E</span><span class="s-val" id="sgx-pe">—</span></div>
+        <div class="stat"><span class="s-label">市净率 P/B</span><span class="s-val" id="sgx-pb">—</span></div>
+        <div class="stat"><span class="s-label">每股收益 EPS</span><span class="s-val" id="sgx-eps">—</span></div>
+        <div class="stat"><span class="s-label">股息率 Div Yield</span><span class="s-val" id="sgx-div">—</span></div>
+        <div class="stat"><span class="s-label">52W 最高</span><span class="s-val hi" id="sgx-hi">—</span></div>
+        <div class="stat"><span class="s-label">52W 最低</span><span class="s-val lo" id="sgx-lo">—</span></div>
+      </div>
+      <div class="err" id="sgx-err"></div>
+    </div>
+
+    <!-- LSE -->
+    <div class="card lse">
+      <div class="exch">伦敦交易所 LSE</div>
+      <div class="ticker">WKS.L · 英镑便士 GBp</div>
+      <div class="price-hero">
+        <span class="price-big" id="lse-price">—</span>
+        <span class="price-chg neu" id="lse-chg">—</span>
+      </div>
+      <hr class="d">
+      <div class="stats">
+        <div class="stat"><span class="s-label">市值</span><span class="s-val" id="lse-mcap">—</span></div>
+        <div class="stat"><span class="s-label">换算市值 (USD)</span><span class="s-val" id="lse-mcap-usd">—</span></div>
+        <div class="stat"><span class="s-label">成交量 Volume</span><span class="s-val" id="lse-vol">—</span></div>
+        <div class="stat"><span class="s-label">均量 Avg Vol (3M)</span><span class="s-val" id="lse-avgvol">—</span></div>
+        <div class="stat"><span class="s-label">市盈率 P/E</span><span class="s-val" id="lse-pe">—</span></div>
+        <div class="stat"><span class="s-label">市净率 P/B</span><span class="s-val" id="lse-pb">—</span></div>
+        <div class="stat"><span class="s-label">每股收益 EPS</span><span class="s-val" id="lse-eps">—</span></div>
+        <div class="stat"><span class="s-label">股息率 Div Yield</span><span class="s-val" id="lse-div">—</span></div>
+        <div class="stat"><span class="s-label">52W 最高</span><span class="s-val hi" id="lse-hi">—</span></div>
+        <div class="stat"><span class="s-label">52W 最低</span><span class="s-val lo" id="lse-lo">—</span></div>
+      </div>
+      <div class="err" id="lse-err"></div>
+    </div>
+
+  </div>
+
+  <!-- Compare card -->
+  <div class="card cmp">
+    <div class="exch">跨市场比较</div>
+    <div class="ticker">统一换算为 USD · 实时汇率</div>
+    <div class="cmp-grid">
+      <div class="cmp-col">
+        <div class="cmp-lbl">SGX 市值 (USD)</div>
+        <div class="cmp-val" id="c-sgx">—</div>
+        <div class="cmp-sub">SGD/USD: <span id="r-sgdusd">—</span></div>
+      </div>
+      <div class="cmp-col">
+        <div class="cmp-lbl">LSE 市值 (USD)</div>
+        <div class="cmp-val" id="c-lse">—</div>
+        <div class="cmp-sub">GBP/USD: <span id="r-gbpusd">—</span></div>
+      </div>
+      <div class="cmp-col">
+        <div class="cmp-lbl">两地差距</div>
+        <div class="cmp-val" id="c-diff">—</div>
+        <div class="cmp-sub"><span id="c-pct" class="badge neu2">—</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Chart card -->
+  <div class="card chart">
+    <div class="chart-hdr">
+      <div>
+        <div class="exch">股价走势对比</div>
+        <div class="chart-legend">
+          <div class="leg"><div class="leg-dot" style="background:var(--sgx)"></div>SGX · SGD</div>
+          <div class="leg"><div class="leg-dot" style="background:var(--lse)"></div>LSE · GBp</div>
+        </div>
+      </div>
+      <div class="tabs">
+        <button class="tab" onclick="setPeriod('5d','1d',this)">5日</button>
+        <button class="tab on" onclick="setPeriod('1mo','1d',this)">1月</button>
+        <button class="tab" onclick="setPeriod('3mo','1wk',this)">3月</button>
+        <button class="tab" onclick="setPeriod('6mo','1wk',this)">6月</button>
+        <button class="tab" onclick="setPeriod('1y','1wk',this)">1年</button>
+      </div>
+    </div>
+    <div class="chart-box">
+      <canvas id="pc"></canvas>
+      <div class="chart-overlay" id="cov">载入中…</div>
+    </div>
+    <div class="chart-foot" id="cfoot">左轴：SGX（SGD）· 右轴：LSE（便士 GBp）</div>
+
+    <!-- Volume comparison bars -->
+    <div class="vol-section">
+      <div class="vol-label">成交量对比（今日 vs 3月均量）</div>
+      <div class="vol-compare">
+        <div class="vol-item">
+          <div class="vol-name">SGX 今日成交量</div>
+          <div class="vol-bar-wrap"><div class="vol-bar sgx-bar" id="sgx-vbar" style="width:0%"></div></div>
+          <div class="vol-num" id="sgx-vnum">—</div>
+        </div>
+        <div class="vol-item">
+          <div class="vol-name">LSE 今日成交量</div>
+          <div class="vol-bar-wrap"><div class="vol-bar lse-bar" id="lse-vbar" style="width:0%"></div></div>
+          <div class="vol-num" id="lse-vnum">—</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="foot">
+  <span class="foot-time">上次更新：<span id="ltime">—</span></span>
+  <button class="btn" onclick="fetchAll()">立即刷新</button>
+</div>
+<div class="cbar"><div class="cfill" id="cfill" style="width:100%"></div></div>
+
+<script>
+// ── Globals ──────────────────────────────────────────────
+const INTERVAL = 300;
+let secsLeft = INTERVAL, cTimer = null, rTimer = null, chart = null;
+let curRange = '1mo', curInt = '1d';
+
+// ── Network ──────────────────────────────────────────────
+const px = u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`;
+const yUrl = (sym, range='5d', interval='1d') =>
+  px(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=${interval}&range=${range}`);
+const ySum = sym =>
+  px(`https://query1.finance.yahoo.com/v11/finance/quoteSummary/${encodeURIComponent(sym)}?modules=summaryDetail,defaultKeyStatistics,financialData`);
+
+async function getJson(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error('HTTP '+r.status);
+  return r.json();
+}
+
+// ── Format helpers ───────────────────────────────────────
+const f = (n,d=2) => n==null||isNaN(n) ? '—' : n.toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});
+const fB = n => {
+  if (n==null||isNaN(n)) return '—';
+  if (n>=1e9) return (n/1e9).toFixed(2)+'B';
+  if (n>=1e6) return (n/1e6).toFixed(2)+'M';
+  if (n>=1e3) return (n/1e3).toFixed(1)+'K';
+  return String(n);
+};
+const fPct = n => n==null||isNaN(n) ? '—' : f(n*100,2)+'%';
+
+function setChg(el, price, prev) {
+  if (!price||!prev) { el.textContent='—'; el.className='price-chg neu'; return; }
+  const d=price-prev, p=(d/prev)*100;
+  el.textContent = `${d>=0?'+':''}${f(d,3)}  (${d>=0?'+':''}${f(p)}%)`;
+  el.className = 'price-chg '+(d>0?'up':d<0?'dn':'neu');
+}
+
+// ── Fetch quote + summary ────────────────────────────────
+async function fetchFull(sym, isPence=false) {
+  const [chartData, sumData] = await Promise.all([
+    getJson(yUrl(sym)),
+    getJson(ySum(sym)),
+  ]);
+
+  const meta = chartData?.chart?.result?.[0]?.meta;
+  if (!meta) throw new Error('no meta');
+
+  const sd = sumData?.quoteSummary?.result?.[0]?.summaryDetail || {};
+  const ks = sumData?.quoteSummary?.result?.[0]?.defaultKeyStatistics || {};
+
+  const rawPrice = meta.regularMarketPrice;
+  const price    = isPence ? rawPrice/100 : rawPrice;
+  const prev     = isPence ? (meta.chartPreviousClose||meta.previousClose)/100 : (meta.chartPreviousClose||meta.previousClose);
+
+  return {
+    price, prev,
+    currency: meta.currency,
+    shares:   meta.sharesOutstanding || ks.sharesOutstanding?.raw || null,
+    marketCap: meta.marketCap || sd.marketCap?.raw || null,
+    volume:    meta.regularMarketVolume || sd.volume?.raw || null,
+    avgVol:    sd.averageVolume?.raw || sd.averageDailyVolume3Month?.raw || null,
+    pe:        sd.trailingPE?.raw || ks.trailingPE?.raw || null,
+    pb:        ks.priceToBook?.raw || null,
+    eps:       ks.trailingEps?.raw || null,
+    divYield:  sd.dividendYield?.raw || null,
+    hi52:      sd.fiftyTwoWeekHigh?.raw || null,
+    lo52:      sd.fiftyTwoWeekLow?.raw  || null,
+  };
+}
+
+// ── Populate a card ──────────────────────────────────────
+function fillCard(id, q, ccy, usd, rate) {
+  const g = s => document.getElementById(id+s);
+  const priceFmt = ccy==='GBp' ? `${f(q.price,2)} GBp` : `${ccy==='SGD'?'S$':''}${f(q.price,3)}`;
+  g('-price').textContent = priceFmt;
+  setChg(g('-chg'), q.price, q.prev);
+
+  const mcap = q.marketCap || (q.price && q.shares ? q.price*q.shares : null);
+  const mcapUSD = mcap && rate ? mcap*rate : null;
+
+  g('-mcap').textContent     = mcap    ? (ccy==='SGD'?'S$ ':'£') + fB(mcap)    : '—';
+  g('-mcap-usd').textContent = mcapUSD ? 'US$ '+fB(mcapUSD)                     : '—';
+  g('-vol').textContent      = q.volume  ? fB(q.volume)                          : '—';
+  g('-avgvol').textContent   = q.avgVol  ? fB(q.avgVol)                          : '—';
+  g('-pe').textContent       = q.pe      ? f(q.pe)+'x'                           : '—';
+  g('-pb').textContent       = q.pb      ? f(q.pb)+'x'                           : '—';
+  g('-eps').textContent      = q.eps     ? f(q.eps,4)                            : '—';
+  g('-div').textContent      = q.divYield ? fPct(q.divYield)                     : '—';
+  g('-hi').textContent       = q.hi52    ? (ccy==='SGD'?'S$':'')+ f(q.hi52,(ccy==='GBp'?1:3)) : '—';
+  g('-lo').textContent       = q.lo52    ? (ccy==='SGD'?'S$':'')+ f(q.lo52,(ccy==='GBp'?1:3)) : '—';
+
+  return { mcap, mcapUSD };
+}
+
+// ── Volume bars ──────────────────────────────────────────
+function setVolBar(prefix, vol, avgVol) {
+  const pct = (vol && avgVol) ? Math.min(vol/avgVol*100, 200) : 0;
+  document.getElementById(prefix+'-vbar').style.width = (pct/2)+'%'; // scale: 100% bar = 2× avg
+  document.getElementById(prefix+'-vnum').textContent =
+    (vol && avgVol) ? `${fB(vol)}  (均量 ${fB(avgVol)} 的 ${f(vol/avgVol*100,0)}%)` : fB(vol)||'—';
+}
+
+// ── Main fetch ───────────────────────────────────────────
+async function fetchAll() {
+  document.getElementById('dot').className = 'dot busy';
+  let sgxMcapUSD = null, lseMcapUSD = null;
+
+  // Rates
+  let sgdUsd = null, gbpUsd = null;
+  try {
+    const [sr, gr] = await Promise.all([
+      getJson(yUrl('SGDUSD=X')),
+      getJson(yUrl('GBPUSD=X')),
+    ]);
+    sgdUsd = sr?.chart?.result?.[0]?.meta?.regularMarketPrice || null;
+    gbpUsd = gr?.chart?.result?.[0]?.meta?.regularMarketPrice || null;
+  } catch(e) { console.warn('FX:', e); }
+
+  document.getElementById('r-sgdusd').textContent = sgdUsd ? f(sgdUsd,4) : '—';
+  document.getElementById('r-gbpusd').textContent = gbpUsd ? f(gbpUsd,4) : '—';
+
+  // SGX
+  try {
+    const q = await fetchFull('WKS.SI', false);
+    const { mcapUSD } = fillCard('sgx', q, 'SGD', sgdUsd, sgdUsd);
+    setVolBar('sgx', q.volume, q.avgVol);
+    sgxMcapUSD = mcapUSD;
+    document.getElementById('sgx-err').textContent = '';
+  } catch(e) {
+    document.getElementById('sgx-err').textContent = '⚠ 数据获取失败，请稍后重试';
+    console.error('SGX:', e);
+  }
+
+  // LSE
+  try {
+    const q = await fetchFull('WKS.L', true);
+    // For LSE marketCap from Yahoo is in GBP (not pence), keep as is
+    const { mcapUSD } = fillCard('lse', q, 'GBp', gbpUsd, gbpUsd);
+    setVolBar('lse', q.volume, q.avgVol);
+    lseMcapUSD = mcapUSD;
+    document.getElementById('lse-err').textContent = '';
+  } catch(e) {
+    document.getElementById('lse-err').textContent = '⚠ 数据获取失败，请稍后重试';
+    console.error('LSE:', e);
+  }
+
+  // Compare
+  document.getElementById('c-sgx').textContent = sgxMcapUSD ? '$'+fB(sgxMcapUSD) : '—';
+  document.getElementById('c-lse').textContent = lseMcapUSD ? '$'+fB(lseMcapUSD) : '—';
+  if (sgxMcapUSD && lseMcapUSD) {
+    const diff = sgxMcapUSD - lseMcapUSD;
+    const pct  = diff/lseMcapUSD*100;
+    document.getElementById('c-diff').textContent = '$'+fB(Math.abs(diff));
+    const b = document.getElementById('c-pct');
+    b.textContent = `SGX ${diff>=0?'+':''}${f(pct)}% vs LSE`;
+    b.className = 'badge '+(diff>0?'pos':diff<0?'neg':'neu2');
+  } else {
+    document.getElementById('c-diff').textContent = '—';
+  }
+
+  document.getElementById('ltime').textContent =
+    new Date().toLocaleTimeString('zh-CN',{hour12:false});
+  document.getElementById('dot').className = 'dot';
+  resetCountdown();
+}
+
+// ── Chart ────────────────────────────────────────────────
+async function loadChart(range, interval) {
+  const ov = document.getElementById('cov');
+  ov.style.display='flex'; ov.textContent='载入图表…';
+  try {
+    const [sd, ld] = await Promise.all([
+      getJson(yUrl('WKS.SI', range, interval)),
+      getJson(yUrl('WKS.L',  range, interval)),
+    ]);
+
+    function parse(data) {
+      const r = data?.chart?.result?.[0];
+      if (!r) return [];
+      const ts = r.timestamps||r.timestamp||[];
+      const cl = r.indicators?.quote?.[0]?.close||[];
+      return ts.map((t,i)=>cl[i]!=null?{x:new Date(t*1000),y:cl[i]}:null).filter(Boolean);
+    }
+
+    const sgxPts = parse(sd);
+    const lsePts = parse(ld);
+
+    const gc = '#1e2535', tc = '#3a4460';
+    const ctx = document.getElementById('pc').getContext('2d');
+    if (chart) chart.destroy();
+    chart = new Chart(ctx, {
+      type:'line',
+      data:{
+        datasets:[
+          {label:'SGX SGD',data:sgxPts,borderColor:'#00d4a8',backgroundColor:'rgba(0,212,168,.05)',borderWidth:1.8,pointRadius:0,pointHoverRadius:4,tension:.3,yAxisID:'yS'},
+          {label:'LSE GBp',data:lsePts,borderColor:'#7c6af7',backgroundColor:'rgba(124,106,247,.05)',borderWidth:1.8,pointRadius:0,pointHoverRadius:4,tension:.3,yAxisID:'yL'},
+        ]
+      },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        interaction:{mode:'index',intersect:false},
+        plugins:{
+          legend:{display:false},
+          tooltip:{
+            backgroundColor:'#111520',borderColor:'#1e2535',borderWidth:1,
+            titleColor:'#6b7a99',bodyColor:'#e8edf5',
+            titleFont:{family:'IBM Plex Mono',size:11},
+            bodyFont:{family:'IBM Plex Mono',size:12},
+            callbacks:{
+              title:i=>{const d=new Date(i[0].parsed.x);return d.toLocaleDateString('zh-CN',{year:'numeric',month:'short',day:'numeric'})},
+              label:i=>i.datasetIndex===0?`SGX  S$${f(i.parsed.y,3)}`:`LSE  ${f(i.parsed.y,2)} GBp`
+            }
+          }
+        },
+        scales:{
+          x:{type:'time',grid:{color:gc},ticks:{color:tc,font:{family:'IBM Plex Mono',size:10},maxTicksLimit:7,maxRotation:0},border:{color:gc}},
+          yS:{position:'left',grid:{color:gc},ticks:{color:'#00d4a8',font:{family:'IBM Plex Mono',size:10},callback:v=>'S$'+f(v,3)},border:{color:'#00d4a830'}},
+          yL:{position:'right',grid:{drawOnChartArea:false},ticks:{color:'#7c6af7',font:{family:'IBM Plex Mono',size:10},callback:v=>f(v,1)+'p'},border:{color:'#7c6af730'}},
+        }
+      }
+    });
+    ov.style.display='none';
+    document.getElementById('cfoot').textContent =
+      `左轴：SGX（SGD）· 右轴：LSE（便士 GBp）· ${range} 走势 · 数据来源 Yahoo Finance`;
+  } catch(e) {
+    ov.textContent='⚠ 图表载入失败，请稍后重试';
+    console.error('Chart:',e);
+  }
+}
+
+function setPeriod(range, interval, btn) {
+  curRange=range; curInt=interval;
+  document.querySelectorAll('.tab').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+  loadChart(range, interval);
+}
+
+// ── Countdown ────────────────────────────────────────────
+function resetCountdown() {
+  if(cTimer) clearInterval(cTimer);
+  if(rTimer) clearTimeout(rTimer);
+  secsLeft = INTERVAL;
+  tick();
+  cTimer = setInterval(()=>{secsLeft--;tick();if(secsLeft<=0)clearInterval(cTimer);},1000);
+  rTimer  = setTimeout(fetchAll, INTERVAL*1000);
+}
+function tick() {
+  document.getElementById('cfill').style.width=(secsLeft/INTERVAL*100)+'%';
+  const m=Math.floor(secsLeft/60),s=secsLeft%60;
+  document.getElementById('nxt').textContent=`${m}:${String(s).padStart(2,'0')} 后刷新`;
+}
+
+// ── Init ─────────────────────────────────────────────────
+fetchAll();
+loadChart(curRange, curInt);
+</script>
+</body>
+</html>
